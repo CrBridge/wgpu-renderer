@@ -1,3 +1,4 @@
 pub mod window;
-mod vertex;
+mod model;
 mod texture;
+mod resources;
