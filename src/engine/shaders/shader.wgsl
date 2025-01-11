@@ -1,9 +1,13 @@
 struct CameraUniform {
-    // I want to turn this into the general ubo (m-v-p)
     view_projection: mat4x4<f32>
 };
 @group(1) @binding(0)
 var<uniform> camera: CameraUniform;
+
+struct ModelPush { 
+    model: mat4x4<f32> 
+}
+var<push_constant> push: ModelPush;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -19,8 +23,7 @@ struct VertexOutput {
 fn vs_main(model: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.uv = model.uv;
-    //out.clip_position = camera.view_projection * model_matrix * vec4<f32>(model.position, 1.0);
-    out.clip_position = camera.view_projection * vec4<f32>(model.position, 1.0);
+    out.clip_position = camera.view_projection * push.model * vec4<f32>(model.position, 1.0);
     return out;
 }
 

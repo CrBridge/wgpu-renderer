@@ -33,6 +33,21 @@ impl CameraUniform {
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct ModelPush {
+    model: [[f32; 4]; 4]
+}
+
+impl ModelPush {
+    fn new() -> Self {
+        use cgmath::SquareMatrix;
+        Self {
+            model: (cgmath::Matrix4::from_scale(10.0) * cgmath::Matrix4::identity()).into()
+        }
+    }
+}
+
 struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
@@ -48,7 +63,8 @@ struct State<'a> {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
-    obj_model: model::Model
+    obj_model: model::Model,
+    model_matrix: ModelPush
 }
 
 impl<'a> State<'a> {
@@ -72,8 +88,11 @@ impl<'a> State<'a> {
 
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
+                required_features: wgpu::Features::PUSH_CONSTANTS,
+                required_limits: wgpu::Limits{
+                    max_push_constant_size: 128,
+                    ..Default::default()
+                },
                 label: None,
                 memory_hints: Default::default()
             },
@@ -175,6 +194,14 @@ impl<'a> State<'a> {
 
         let depth_texture = texture::Texture::create_depth_texture(&device, &config, "Depth Texture");
 
+        let model_matrix = ModelPush::new();
+
+        // mat4x4 of f32 is 512 bits, or 64 bytes
+        let model_push = wgpu::PushConstantRange {
+            stages: wgpu::ShaderStages::VERTEX,
+            range: 0..64
+        };
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
@@ -182,7 +209,9 @@ impl<'a> State<'a> {
                 &texture_bind_group_layout,
                 &camera_bind_group_layout
             ],
-            push_constant_ranges: &[]
+            push_constant_ranges: &[
+                model_push
+            ]
         });
 
         let render_pipeline = {
@@ -219,7 +248,8 @@ impl<'a> State<'a> {
             camera_buffer,
             camera_bind_group,
             depth_texture,
-            obj_model
+            obj_model,
+            model_matrix
         }
     }
 
@@ -273,6 +303,8 @@ impl<'a> State<'a> {
         // I could then later run this get current_texture function later, blit the low res texture to it,
         // then present
         // this might call for another render pass, not sure yet
+        // wgpu doesnt have blit, equivalent might be the commands queue.write_texture
+        // or CommandEncoder::copy_texture_to_texture
 
         let output = self.surface.get_current_texture()?;
 
@@ -310,6 +342,11 @@ impl<'a> State<'a> {
             timestamp_writes: None
         });
         render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_push_constants(
+            wgpu::ShaderStages::VERTEX,
+            0,
+            bytemuck::cast_slice(&[self.model_matrix])
+        );
         render_pass.draw_model(
             &self.obj_model, 
             &self.camera_bind_group
