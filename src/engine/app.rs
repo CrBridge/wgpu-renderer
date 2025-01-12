@@ -5,6 +5,7 @@ use super::{
     pipeline,
     camera
 };
+use crate::engine::ecs;
 use winit::{
     event::*,
     event_loop::EventLoop,
@@ -16,25 +17,6 @@ use std::time::Duration;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct CameraUniform {
-    view_projection: [[f32; 4]; 4]
-}
-
-impl CameraUniform {
-    fn new() -> Self {
-        use cgmath::SquareMatrix;
-        Self {
-            view_projection: cgmath::Matrix4::identity().into()
-        }
-    }
-
-    fn update_view_projection(&mut self, camera: &camera::Camera, projection: &camera::Projection) {
-        self.view_projection = (projection.calculate_matrix() * camera.calculate_matrix()).into();
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct ModelPush {
     model: [[f32; 4]; 4]
 }
@@ -43,7 +25,7 @@ impl ModelPush {
     fn new() -> Self {
         use cgmath::SquareMatrix;
         Self {
-            model: (cgmath::Matrix4::from_scale(10.0) * cgmath::Matrix4::identity()).into()
+            model: cgmath::Matrix4::identity().into()
         }
     }
 }
@@ -59,12 +41,11 @@ struct State<'a> {
     camera: camera::Camera,
     projection: camera::Projection,
     camera_controller: camera::CameraController,
-    camera_uniform: CameraUniform,
+    camera_uniform: camera::CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
-    obj_model: model::Model,
-    model_matrix: ModelPush
+    world: ecs::ecs::World
 }
 
 impl<'a> State<'a> {
@@ -153,7 +134,7 @@ impl<'a> State<'a> {
         );
         let camera_controller = camera::CameraController::new(4.0, 0.4);
 
-        let mut camera_uniform = CameraUniform::new();
+        let mut camera_uniform = camera::CameraUniform::new();
         camera_uniform.update_view_projection(&camera, &projection);
 
         let camera_buffer = device.create_buffer_init(
@@ -194,10 +175,8 @@ impl<'a> State<'a> {
 
         let depth_texture = texture::Texture::create_depth_texture(&device, &config, "Depth Texture");
 
-        let model_matrix = ModelPush::new();
-
         // mat4x4 of f32 is 512 bits, or 64 bytes
-        let model_push = wgpu::PushConstantRange {
+        let model_push_range = wgpu::PushConstantRange {
             stages: wgpu::ShaderStages::VERTEX,
             range: 0..64
         };
@@ -210,7 +189,7 @@ impl<'a> State<'a> {
                 &camera_bind_group_layout
             ],
             push_constant_ranges: &[
-                model_push
+                model_push_range
             ]
         });
 
@@ -229,9 +208,19 @@ impl<'a> State<'a> {
             )
         };
 
-        let obj_model = resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+        let mut transform_com = ecs::transform::Transform::new();
+        transform_com.scale = 5.0;
+        let mut model_matrix = ModelPush::new();
+        model_matrix.model = transform_com.mat4().into();
+
+        let obj_model = resources::load_model("test_cube/cube.obj", &device, &queue, &texture_bind_group_layout)
             .await
             .unwrap();
+
+        let mut world = ecs::ecs::World::new();
+        let test_entity = world.new_entity();
+        world.add_component_to_entity(test_entity, model_matrix);
+        world.add_component_to_entity(test_entity, obj_model);
 
         Self{
             window,
@@ -248,8 +237,7 @@ impl<'a> State<'a> {
             camera_buffer,
             camera_bind_group,
             depth_texture,
-            obj_model,
-            model_matrix
+            world
         }
     }
 
@@ -297,15 +285,6 @@ impl<'a> State<'a> {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        // for res downscaling, I think the solution for now would be to change this output to a manually
-        // created image with the resolution I want (480x270 for example), then the render pass work is done
-        // on this instead (this created image would likely go into the state struct, created in fn new)
-        // I could then later run this get current_texture function later, blit the low res texture to it,
-        // then present
-        // this might call for another render pass, not sure yet
-        // wgpu doesnt have blit, equivalent might be the commands queue.write_texture
-        // or CommandEncoder::copy_texture_to_texture
-
         let output = self.surface.get_current_texture()?;
 
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -341,17 +320,27 @@ impl<'a> State<'a> {
             occlusion_query_set: None,
             timestamp_writes: None
         });
-        render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_push_constants(
-            wgpu::ShaderStages::VERTEX,
-            0,
-            bytemuck::cast_slice(&[self.model_matrix])
-        );
-        render_pass.draw_model(
-            &self.obj_model, 
-            &self.camera_bind_group
-        );
 
+        render_pass.set_pipeline(&self.render_pipeline);
+
+        // we need to borrow the relevant components before we can use them for draw calls
+        let transforms = &mut self.world.borrow_component_vec::<ModelPush>().unwrap();
+        let models = &mut self.world.borrow_component_vec::<model::Model>().unwrap();
+        let zip = models.iter_mut().zip(transforms.iter_mut());
+        let iter = zip.filter_map(|(model, transform)| Some((model.as_mut()?, transform.as_mut()?)));        
+        for (model, transform) in iter {
+            render_pass.set_push_constants(
+                wgpu::ShaderStages::VERTEX,
+                0,
+                bytemuck::cast_slice(&[*transform])
+            );
+            render_pass.draw_model(
+                model,
+                &self.camera_bind_group
+            );
+        }
+
+        // gotta drop the render_pass here since it borrows the encoder and we need it back
         drop(render_pass);
 
         self.queue.submit(std::iter::once(encoder.finish()));

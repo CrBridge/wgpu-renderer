@@ -1,6 +1,5 @@
 use cgmath::*;
 use winit::event::*;
-use winit::dpi::PhysicalPosition;
 use winit::keyboard::KeyCode;
 use std::time::Duration;
 use std::f32::consts::FRAC_PI_2;
@@ -175,5 +174,26 @@ impl CameraController {
         } else if camera.pitch > Rad(SAFE_FRAC_PI_2) {
             camera.pitch = Rad(SAFE_FRAC_PI_2);
         }
+    }
+}
+
+// this could still become a general ubo in the future if I want more per-frame variables
+// to access in the future (world position, (sin)time, etc.)
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct CameraUniform {
+    view_projection: [[f32; 4]; 4]
+}
+
+impl CameraUniform {
+    pub fn new() -> Self {
+        use cgmath::SquareMatrix;
+        Self {
+            view_projection: cgmath::Matrix4::identity().into()
+        }
+    }
+
+    pub fn update_view_projection(&mut self, camera: &Camera, projection: &Projection) {
+        self.view_projection = (projection.calculate_matrix() * camera.calculate_matrix()).into();
     }
 }
