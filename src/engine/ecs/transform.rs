@@ -3,7 +3,7 @@ use cgmath::SquareMatrix;
 pub struct Transform {
     pub translation: cgmath::Vector3<f32>,
     pub scale: f32,
-    pub rotation: cgmath::Vector3<f32>
+    //pub rotation: cgmath::Vector3<f32>
 }
 
 impl Transform {
@@ -11,7 +11,7 @@ impl Transform {
         Self {
             translation: cgmath::vec3(0.0, 0.0, 0.0),
             scale: 1.0,
-            rotation: cgmath::vec3(0.0, 0.0, 0.0)
+            //rotation: cgmath::vec3(0.0, 0.0, 0.0)
         }
     }
 

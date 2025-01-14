@@ -44,6 +44,7 @@ struct State<'a> {
     camera_uniform: camera::CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    texture_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
     world: ecs::ecs::World
 }
@@ -213,9 +214,27 @@ impl<'a> State<'a> {
         let mut model_matrix = ModelPush::new();
         model_matrix.model = transform_com.mat4().into();
 
-        let obj_model = resources::load_model("test_cube/cube.obj", &device, &queue, &texture_bind_group_layout)
+        let obj_model = resources::load_model("test_cube/cube.obj", &device)
             .await
             .unwrap();
+
+        // get rid of this and have texture stored with entity like model is
+        let diffuse_bytes = include_bytes!("../../res/test_cube/cube-diffuse.jpg");
+        let texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "diffuse tex").unwrap();
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture.view)
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&texture.sampler)
+                }
+            ]
+        });
 
         let mut world = ecs::ecs::World::new();
         let test_entity = world.new_entity();
@@ -236,6 +255,7 @@ impl<'a> State<'a> {
             camera_uniform,
             camera_buffer,
             camera_bind_group,
+            texture_bind_group,
             depth_texture,
             world
         }
@@ -322,6 +342,8 @@ impl<'a> State<'a> {
         });
 
         render_pass.set_pipeline(&self.render_pipeline);
+        // temp
+        render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
 
         // we need to borrow the relevant components before we can use them for draw calls
         let transforms = &mut self.world.borrow_component_vec::<ModelPush>().unwrap();
