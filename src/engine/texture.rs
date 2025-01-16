@@ -121,3 +121,7 @@ impl Texture {
         Self { texture, view, sampler }
     }
 }
+
+pub struct Material {
+    pub bind_group: wgpu::BindGroup
+}

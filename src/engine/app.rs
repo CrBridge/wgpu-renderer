@@ -3,32 +3,18 @@ use super::{
     resources, 
     texture,
     pipeline,
-    camera
+    camera,
+    ecs
 };
-use crate::engine::ecs;
 use winit::{
     event::*,
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowBuilder}
+    window::{Window, WindowBuilder},
+    dpi::PhysicalSize
 };
 use wgpu::util::DeviceExt;
 use std::time::Duration;
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct ModelPush {
-    model: [[f32; 4]; 4]
-}
-
-impl ModelPush {
-    fn new() -> Self {
-        use cgmath::SquareMatrix;
-        Self {
-            model: cgmath::Matrix4::identity().into()
-        }
-    }
-}
 
 struct State<'a> {
     surface: wgpu::Surface<'a>,
@@ -44,7 +30,6 @@ struct State<'a> {
     camera_uniform: camera::CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    texture_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
     world: ecs::ecs::World
 }
@@ -209,37 +194,9 @@ impl<'a> State<'a> {
             )
         };
 
-        let mut transform_com = ecs::transform::Transform::new();
-        transform_com.scale = 5.0;
-        let mut model_matrix = ModelPush::new();
-        model_matrix.model = transform_com.mat4().into();
-
-        let obj_model = resources::load_model("test_cube/cube.obj", &device)
-            .await
-            .unwrap();
-
-        // get rid of this and have texture stored with entity like model is
-        let diffuse_bytes = include_bytes!("../../res/test_cube/cube-diffuse.jpg");
-        let texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "diffuse tex").unwrap();
-        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture.view)
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&texture.sampler)
-                }
-            ]
-        });
-
-        let mut world = ecs::ecs::World::new();
-        let test_entity = world.new_entity();
-        world.add_component_to_entity(test_entity, model_matrix);
-        world.add_component_to_entity(test_entity, obj_model);
+        let world = load_game_objects(
+            &device, &queue, &texture_bind_group_layout
+        ).await;
 
         Self{
             window,
@@ -255,7 +212,6 @@ impl<'a> State<'a> {
             camera_uniform,
             camera_buffer,
             camera_bind_group,
-            texture_bind_group,
             depth_texture,
             world
         }
@@ -342,15 +298,19 @@ impl<'a> State<'a> {
         });
 
         render_pass.set_pipeline(&self.render_pipeline);
-        // temp
-        render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
 
         // we need to borrow the relevant components before we can use them for draw calls
-        let transforms = &mut self.world.borrow_component_vec::<ModelPush>().unwrap();
+        let transforms = &mut self.world.borrow_component_vec::<ecs::transform::ModelPush>().unwrap();
         let models = &mut self.world.borrow_component_vec::<model::Model>().unwrap();
-        let zip = models.iter_mut().zip(transforms.iter_mut());
-        let iter = zip.filter_map(|(model, transform)| Some((model.as_mut()?, transform.as_mut()?)));        
-        for (model, transform) in iter {
+        let textures = &mut self.world.borrow_component_vec::<texture::Material>().unwrap();
+        let zip = models.iter_mut()
+            .zip(transforms.iter_mut())
+            .zip(textures.iter_mut());
+        let iter = zip.filter_map(|((model, transform), texture)| {
+            Some((model.as_mut()?, transform.as_mut()?, texture.as_mut()?))
+        });
+        for (model, transform, texture) in iter {
+            render_pass.set_bind_group(0, &texture.bind_group, &[]);
             render_pass.set_push_constants(
                 wgpu::ShaderStages::VERTEX,
                 0,
@@ -372,10 +332,45 @@ impl<'a> State<'a> {
     }
 }
 
+async fn load_game_objects(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture_layout: &wgpu::BindGroupLayout
+) -> ecs::ecs::World {
+    let mut transform_com = ecs::transform::Transform::new();
+    transform_com.scale = 5.0;
+    transform_com.rotation = cgmath::vec3(45.0, 45.0, 45.0);
+    let mut model_matrix = ecs::transform::ModelPush::new();
+    model_matrix.model = transform_com.mat4().into();
+
+    let obj_model = resources::load_model("test_cube/cube.obj", &device)
+        .await
+        .unwrap();
+
+    let material = resources::load_material(
+        &device,
+        &queue,
+        &texture_layout,
+        "test_cube/cube-diffuse.jpg"
+    ).await.unwrap();
+
+    let mut world = ecs::ecs::World::new();
+    let test_entity = world.new_entity();
+    world.add_component_to_entity(test_entity, model_matrix);
+    world.add_component_to_entity(test_entity, obj_model);
+    world.add_component_to_entity(test_entity, material);
+
+    world
+}
+
 pub async fn run() {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = WindowBuilder::new()
+        .with_title("WGPU Gaming")
+        .with_inner_size(PhysicalSize::new(480, 272))
+        .build(&event_loop)
+        .unwrap();
     window.set_cursor_visible(false);
     window.set_cursor_grab(winit::window::CursorGrabMode::Confined).unwrap();
 

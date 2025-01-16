@@ -1,8 +1,7 @@
 use std::io::{BufReader, Cursor};
 use wgpu::util::DeviceExt;
 
-use super::model;
-// use super::texture;
+use super::{model, texture};
 
 pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
     let path = std::path::Path::new(env!("OUT_DIR"))
@@ -13,7 +12,7 @@ pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
     Ok(txt)
 }
 
-/*pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
+pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
     let path = std::path::Path::new(env!("OUT_DIR"))
         .join("res")
         .join(file_name);
@@ -29,7 +28,7 @@ pub async fn load_texture(
 ) -> anyhow::Result<texture::Texture> {
     let data = load_binary(file_name).await?;
     texture::Texture::from_bytes(device, queue,&data, file_name)
-}*/
+}
 
 pub async fn load_model(
     file_name: &str,
@@ -97,10 +96,33 @@ pub async fn load_model(
             _name: file_name.to_string(),
             vertex_buffer,
             index_buffer,
-            num_elements: m.mesh.indices.len() as u32,
-            _material: m.mesh.material_id.unwrap_or(0)
+            num_elements: m.mesh.indices.len() as u32
         }
     }).collect::<Vec<_>>();
 
     Ok(model::Model { meshes })
+}
+
+pub async fn load_material (
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+    file_name: &str
+) -> anyhow::Result<texture::Material> {
+    let diffuse = load_texture(file_name, device, queue).await?;
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&diffuse.view)
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&diffuse.sampler)
+            }
+        ]
+    });
+    Ok(texture::Material { bind_group })
 }
