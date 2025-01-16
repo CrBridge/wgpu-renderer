@@ -1,20 +1,21 @@
 // adapted from: https://ianjk.com/ecs-in-rust/
 
 use std::cell::{RefCell, RefMut};
+use std::any::Any;
 
 trait ComponentVec {
-    fn as_any(&self) -> &dyn std::any::Any;
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
     fn push_none(&mut self);
 }
 
 impl<T: 'static> ComponentVec for RefCell<Vec<Option<T>>> {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self as &dyn std::any::Any
+    fn as_any(&self) -> &dyn Any {
+        self as &dyn Any
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self as &mut dyn std::any::Any
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self as &mut dyn Any
     }
 
     fn push_none(&mut self) {

@@ -1,4 +1,4 @@
-use cgmath::{Rad, SquareMatrix};
+use cgmath::{Deg, SquareMatrix};
 
 pub struct Transform {
     pub translation: cgmath::Vector3<f32>,
@@ -23,9 +23,9 @@ impl Transform {
         //  all of these individual ones
         let translation = cgmath::Matrix4::from_translation(self.translation);
 
-        let rotation_x = cgmath::Matrix4::from_angle_x(Rad(self.rotation.x));
-        let rotation_y = cgmath::Matrix4::from_angle_y(Rad(self.rotation.x));
-        let rotation_z = cgmath::Matrix4::from_angle_z(Rad(self.rotation.x));
+        let rotation_x = cgmath::Matrix4::from_angle_x(Deg(self.rotation.x));
+        let rotation_y = cgmath::Matrix4::from_angle_y(Deg(self.rotation.y));
+        let rotation_z = cgmath::Matrix4::from_angle_z(Deg(self.rotation.z));
         let rotation = rotation_x * rotation_y * rotation_z;
 
         let scale = cgmath::Matrix4::from_scale(self.scale);
@@ -37,13 +37,13 @@ impl Transform {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ModelPush {
-    pub model: [[f32; 4]; 4]
+    model: [[f32; 4]; 4]
 }
 
 impl ModelPush {
-    pub fn new() -> Self {
+    pub fn from_transform(transform: &Transform) -> Self {
         Self {
-            model: cgmath::Matrix4::identity().into()
+            model: transform.mat4().into()
         }
     }
 }

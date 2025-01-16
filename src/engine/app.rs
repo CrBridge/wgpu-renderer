@@ -258,6 +258,12 @@ impl<'a> State<'a> {
             0,
             bytemuck::cast_slice(&[self.camera_uniform])
         );
+
+        /* example of modifying componenets by frame */
+        //let transforms = &mut self.world.borrow_component_vec::<ecs::transform::Transform>().unwrap();
+        //for transform in transforms.iter_mut().filter_map(|f| f.as_mut()) {
+        //    transform.rotation.x += 1.0 * dt.as_secs_f32();
+        //}
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -300,7 +306,7 @@ impl<'a> State<'a> {
         render_pass.set_pipeline(&self.render_pipeline);
 
         // we need to borrow the relevant components before we can use them for draw calls
-        let transforms = &mut self.world.borrow_component_vec::<ecs::transform::ModelPush>().unwrap();
+        let transforms = &mut self.world.borrow_component_vec::<ecs::transform::Transform>().unwrap();
         let models = &mut self.world.borrow_component_vec::<model::Model>().unwrap();
         let textures = &mut self.world.borrow_component_vec::<texture::Material>().unwrap();
         let zip = models.iter_mut()
@@ -310,12 +316,13 @@ impl<'a> State<'a> {
             Some((model.as_mut()?, transform.as_mut()?, texture.as_mut()?))
         });
         for (model, transform, texture) in iter {
-            render_pass.set_bind_group(0, &texture.bind_group, &[]);
+            let model_mat = ecs::transform::ModelPush::from_transform(transform);
             render_pass.set_push_constants(
                 wgpu::ShaderStages::VERTEX,
                 0,
-                bytemuck::cast_slice(&[*transform])
+                bytemuck::cast_slice(&[model_mat])
             );
+            render_pass.set_bind_group(0, &texture.bind_group, &[]);
             render_pass.draw_model(
                 model,
                 &self.camera_bind_group
@@ -337,28 +344,41 @@ async fn load_game_objects(
     queue: &wgpu::Queue,
     texture_layout: &wgpu::BindGroupLayout
 ) -> ecs::ecs::World {
-    let mut transform_com = ecs::transform::Transform::new();
-    transform_com.scale = 5.0;
-    transform_com.rotation = cgmath::vec3(45.0, 45.0, 45.0);
-    let mut model_matrix = ecs::transform::ModelPush::new();
-    model_matrix.model = transform_com.mat4().into();
-
-    let obj_model = resources::load_model("test_cube/cube.obj", &device)
+    let mut cube_transform = ecs::transform::Transform::new();
+    cube_transform.scale = 2.0;
+    let cube_model = resources::load_model("test_cube/cube.obj", &device)
         .await
         .unwrap();
-
-    let material = resources::load_material(
+    let cube_material = resources::load_material(
         &device,
         &queue,
         &texture_layout,
         "test_cube/cube-diffuse.jpg"
     ).await.unwrap();
 
+    let mut quad_transform = ecs::transform::Transform::new();
+    quad_transform.translation = cgmath::vec3(0.0, -2.0, 0.0);
+    quad_transform.rotation = cgmath::vec3(180.0, 0.0, 0.0);
+    quad_transform.scale = 9.0;
+    let quad_model = resources::load_model("test_quad/quad.obj", &device)
+        .await
+        .unwrap();
+    let quad_material = resources::load_material(
+        &device,
+        &queue,
+        &texture_layout,
+        "debug.png"
+    ).await.unwrap();
+
     let mut world = ecs::ecs::World::new();
-    let test_entity = world.new_entity();
-    world.add_component_to_entity(test_entity, model_matrix);
-    world.add_component_to_entity(test_entity, obj_model);
-    world.add_component_to_entity(test_entity, material);
+    let cube_entity = world.new_entity();
+    world.add_component_to_entity(cube_entity, cube_transform);
+    world.add_component_to_entity(cube_entity, cube_model);
+    world.add_component_to_entity(cube_entity, cube_material);
+    let quad_entity = world.new_entity();
+    world.add_component_to_entity(quad_entity, quad_transform);
+    world.add_component_to_entity(quad_entity, quad_model);
+    world.add_component_to_entity(quad_entity, quad_material);
 
     world
 }
