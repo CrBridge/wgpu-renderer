@@ -1,0 +1,22 @@
+{
+  "entities": [
+    {
+      "model_path": "test_cube/cube.obj",
+      "texture_path": "test_cube/cube-diffuse.jpg",
+      "transform": {
+        "position": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": 2.0
+      }
+    },
+    {
+      "model_path": "test_quad/quad.obj",
+      "texture_path": "debug.png",
+      "transform": {
+        "position": [0.0, -2.0, 0.0],
+        "rotation": [180.0, 0.0, 0.0],
+        "scale": 9.0
+      }
+    }
+  ]
+}

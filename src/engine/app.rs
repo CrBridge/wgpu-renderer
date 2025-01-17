@@ -194,8 +194,8 @@ impl<'a> State<'a> {
             )
         };
 
-        let world = load_game_objects(
-            &device, &queue, &texture_bind_group_layout
+        let world = resources::load_scene(
+            "scenes/test.json", &device, &queue, &texture_bind_group_layout
         ).await;
 
         Self{
@@ -337,50 +337,6 @@ impl<'a> State<'a> {
         
         Ok(())
     }
-}
-
-async fn load_game_objects(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    texture_layout: &wgpu::BindGroupLayout
-) -> ecs::ecs::World {
-    let mut cube_transform = ecs::transform::Transform::new();
-    cube_transform.scale = 2.0;
-    let cube_model = resources::load_model("test_cube/cube.obj", &device)
-        .await
-        .unwrap();
-    let cube_material = resources::load_material(
-        &device,
-        &queue,
-        &texture_layout,
-        "test_cube/cube-diffuse.jpg"
-    ).await.unwrap();
-
-    let mut quad_transform = ecs::transform::Transform::new();
-    quad_transform.translation = cgmath::vec3(0.0, -2.0, 0.0);
-    quad_transform.rotation = cgmath::vec3(180.0, 0.0, 0.0);
-    quad_transform.scale = 9.0;
-    let quad_model = resources::load_model("test_quad/quad.obj", &device)
-        .await
-        .unwrap();
-    let quad_material = resources::load_material(
-        &device,
-        &queue,
-        &texture_layout,
-        "debug.png"
-    ).await.unwrap();
-
-    let mut world = ecs::ecs::World::new();
-    let cube_entity = world.new_entity();
-    world.add_component_to_entity(cube_entity, cube_transform);
-    world.add_component_to_entity(cube_entity, cube_model);
-    world.add_component_to_entity(cube_entity, cube_material);
-    let quad_entity = world.new_entity();
-    world.add_component_to_entity(quad_entity, quad_transform);
-    world.add_component_to_entity(quad_entity, quad_model);
-    world.add_component_to_entity(quad_entity, quad_material);
-
-    world
 }
 
 pub async fn run() {

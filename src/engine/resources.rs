@@ -1,7 +1,7 @@
 use std::io::{BufReader, Cursor};
 use wgpu::util::DeviceExt;
 
-use super::{model, texture};
+use super::{model, texture, ecs};
 
 pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
     let path = std::path::Path::new(env!("OUT_DIR"))
@@ -125,4 +125,14 @@ pub async fn load_material (
         ]
     });
     Ok(texture::Material { bind_group })
+}
+
+pub async fn load_scene(
+    file_name: &str,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout
+) -> ecs::ecs::World {
+    let json = load_string(file_name).await.unwrap();
+    ecs::scene::parse_scene(&json, device, queue, layout).await
 }
