@@ -1,8 +1,8 @@
 {
   "entities": [
     {
-      "model_path": "test_cube/cube.obj",
-      "texture_path": "test_cube/cube-diffuse.jpg",
+      "model_path": "cube/cube.obj",
+      "texture_path": "cube/wall.jpg",
       "transform": {
         "position": [0.0, 0.0, 0.0],
         "rotation": [0.0, 0.0, 0.0],
@@ -10,10 +10,10 @@
       }
     },
     {
-      "model_path": "test_quad/quad.obj",
+      "model_path": "quad/quad.obj",
       "texture_path": "debug.png",
       "transform": {
-        "position": [0.0, -2.0, 0.0],
+        "position": [0.0, 0.0, 0.0],
         "rotation": [180.0, 0.0, 0.0],
         "scale": 9.0
       }
