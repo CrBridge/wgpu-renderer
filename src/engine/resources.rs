@@ -1,7 +1,7 @@
 use std::io::{BufReader, Cursor};
 use wgpu::util::DeviceExt;
 
-use super::{model, texture, ecs};
+use super::{model, textures, ecs};
 
 pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
     let path = std::path::Path::new(env!("OUT_DIR"))
@@ -25,9 +25,9 @@ pub async fn load_texture(
     file_name: &str,
     device: &wgpu::Device,
     queue: &wgpu::Queue
-) -> anyhow::Result<texture::Texture> {
+) -> anyhow::Result<textures::texture::Texture> {
     let data = load_binary(file_name).await?;
-    texture::Texture::from_bytes(device, queue,&data, file_name)
+    textures::texture::Texture::from_bytes(device, queue,&data, file_name)
 }
 
 pub async fn load_model(
@@ -108,7 +108,7 @@ pub async fn load_material (
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
     file_name: &str
-) -> anyhow::Result<texture::Material> {
+) -> anyhow::Result<textures::texture::Material> {
     let diffuse = load_texture(file_name, device, queue).await?;
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
@@ -124,7 +124,7 @@ pub async fn load_material (
             }
         ]
     });
-    Ok(texture::Material { bind_group })
+    Ok(textures::texture::Material { bind_group })
 }
 
 pub async fn load_scene(
@@ -132,7 +132,36 @@ pub async fn load_scene(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout
-) -> ecs::ecs::World {
-    let json = load_string(file_name).await.unwrap();
-    ecs::scene::parse_scene(&json, device, queue, layout).await
+) -> anyhow::Result<ecs::ecs::World> {
+    let json = load_string(file_name).await?;
+    Ok(ecs::scene::parse_scene(&json, device, queue, layout).await)
+}
+
+pub async fn load_cubemap_files(
+    file_names: Vec<&str>,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout
+) -> anyhow::Result<textures::cubemap::CubemapBinding> {
+    let mut binaries = Vec::new();
+    for i in file_names.iter() {
+        let binary_data =  load_binary(i).await?;
+        binaries.push(binary_data);
+    }
+    let cubemap = textures::cubemap::Cubemap::from_bytes(binaries, device, queue)?;
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&cubemap.view)
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&cubemap.sampler)
+            }
+        ]
+    });
+    Ok(textures::cubemap::CubemapBinding { bind_group })
 }

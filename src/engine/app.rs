@@ -1,7 +1,7 @@
 use super::{
     model::{self, DrawModel, Vertex}, 
     resources, 
-    texture,
+    textures::{texture, cubemap},
     pipeline,
     camera,
     ecs
@@ -24,6 +24,7 @@ struct State<'a> {
     size: winit::dpi::PhysicalSize<u32>,
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
+    skybox_pipeline: wgpu::RenderPipeline,
     camera: camera::Camera,
     projection: camera::Projection,
     camera_controller: camera::CameraController,
@@ -31,7 +32,9 @@ struct State<'a> {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
-    world: ecs::ecs::World
+    world: ecs::ecs::World,
+    skybox: cubemap::CubemapBinding,
+    skycube: wgpu::Buffer
 }
 
 impl<'a> State<'a> {
@@ -83,7 +86,7 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 2
         };
 
-        let texture_bind_group_layout =device.create_bind_group_layout(
+        let texture_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
             label: Some("Texture Bind Group Layout"),
             entries: &[
@@ -105,6 +108,47 @@ impl<'a> State<'a> {
                 }
             ]
         });
+
+        let skybox_bind_group_layout = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+            label: Some("Skybox Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::Cube,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false }
+                    },
+                    count: None
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                    count: None
+                }
+            ]
+        });
+
+        let skybox = {
+            let skybox_files = vec![
+                "skybox/right.jpg",
+                "skybox/left.jpg",
+                "skybox/top.jpg",
+                "skybox/bottom.jpg",
+                "skybox/front.jpg",
+                "skybox/back.jpg"
+            ];
+
+            resources::load_cubemap_files(
+                skybox_files, 
+                &device, 
+                &queue, 
+                &skybox_bind_group_layout
+        ).await.unwrap()
+    };
 
         let camera = camera::Camera::new(
             (0.0, 5.0, 10.0),
@@ -137,7 +181,7 @@ impl<'a> State<'a> {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -167,19 +211,18 @@ impl<'a> State<'a> {
             range: 0..64
         };
 
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[
-                &texture_bind_group_layout,
-                &camera_bind_group_layout
-            ],
-            push_constant_ranges: &[
-                model_push_range
-            ]
-        });
-
         let render_pipeline = {
+            let render_pipeline_layout =
+                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[
+                    &texture_bind_group_layout,
+                    &camera_bind_group_layout
+                ],
+                push_constant_ranges: &[
+                    model_push_range
+                ]
+            });
             let shader = wgpu::ShaderModuleDescriptor {
                 label: Some("Normal Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("shaders/shader.wgsl").into())
@@ -190,13 +233,43 @@ impl<'a> State<'a> {
                 config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[model::ModelVertex::desc()],
-                shader
+                shader,
+                "Render Pipeline",
+                true
+            )
+        };
+
+        let skybox_pipeline = {
+            let skybox_pipeline_layout =
+                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Skybox Pipeline Layout"),
+                bind_group_layouts: &[
+                    &skybox_bind_group_layout,
+                    &camera_bind_group_layout
+                ],
+                push_constant_ranges: &[]
+            });
+            let shader = wgpu::ShaderModuleDescriptor {
+                label: Some("Skybox Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shaders/sky.wgsl").into())
+            };
+            pipeline::create_render_pipeline(
+                &device,
+                &skybox_pipeline_layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[cubemap::CubemapVertex::desc()],
+                shader,
+                "Skybox Pipeline",
+                false
             )
         };
 
         let world = resources::load_scene(
             "scenes/test.json", &device, &queue, &texture_bind_group_layout
-        ).await;
+        ).await.unwrap();
+
+        let skycube = cubemap::create_cubemap_vertices(&device);
 
         Self{
             window,
@@ -206,6 +279,7 @@ impl<'a> State<'a> {
             config,
             size,
             render_pipeline,
+            skybox_pipeline,
             camera,
             projection,
             camera_controller,
@@ -213,7 +287,9 @@ impl<'a> State<'a> {
             camera_buffer,
             camera_bind_group,
             depth_texture,
-            world
+            world,
+            skybox,
+            skycube
         }
     }
 
@@ -260,10 +336,12 @@ impl<'a> State<'a> {
         );
 
         /* example of modifying componenets by frame */
-        //let transforms = &mut self.world.borrow_component_vec::<ecs::transform::Transform>().unwrap();
-        //for transform in transforms.iter_mut().filter_map(|f| f.as_mut()) {
-        //    transform.rotation.x += 1.0 * dt.as_secs_f32();
-        //}
+        let transforms = &mut self.world.borrow_component_vec::<ecs::transform::Transform>().unwrap();
+        for transform in transforms.iter_mut().filter_map(|f| f.as_mut()) {
+            if transform.scale == 2.0 {
+                transform.rotation.y += 15.0 * dt.as_secs_f32();
+            }
+        }
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -303,7 +381,16 @@ impl<'a> State<'a> {
             timestamp_writes: None
         });
 
+        //skytest
+        render_pass.set_pipeline(&self.skybox_pipeline);
+        render_pass.set_vertex_buffer(0, self.skycube.slice(..));
+        render_pass.set_bind_group(0, &self.skybox.bind_group, &[]);
+        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+        render_pass.draw(0..36, 0..1);
+        //
+
         render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
 
         // we need to borrow the relevant components before we can use them for draw calls
         let transforms = &mut self.world.borrow_component_vec::<ecs::transform::Transform>().unwrap();
@@ -323,10 +410,7 @@ impl<'a> State<'a> {
                 bytemuck::cast_slice(&[model_mat])
             );
             render_pass.set_bind_group(0, &texture.bind_group, &[]);
-            render_pass.draw_model(
-                model,
-                &self.camera_bind_group
-            );
+            render_pass.draw_model(model);
         }
 
         // gotta drop the render_pass here since it borrows the encoder and we need it back
@@ -345,6 +429,7 @@ pub async fn run() {
     let window = WindowBuilder::new()
         .with_title("WGPU Gaming")
         .with_inner_size(PhysicalSize::new(480, 272))
+        //.with_maximized(true)
         .build(&event_loop)
         .unwrap();
     window.set_cursor_visible(false);
