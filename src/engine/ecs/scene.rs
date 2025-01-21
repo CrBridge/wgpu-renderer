@@ -9,7 +9,8 @@ pub async fn parse_scene(
     file: &str,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    layout: &wgpu::BindGroupLayout
+    texture_layout: &wgpu::BindGroupLayout,
+    cubemap_layout: &wgpu::BindGroupLayout
 ) -> ecs::World {
     let mut world = ecs::World::new();
 
@@ -19,36 +20,49 @@ pub async fn parse_scene(
     for entity in entities {
         let world_entity = world.new_entity();
 
-        let model_path = entity["model_path"].as_str().unwrap();
-        let texture_path = entity["texture_path"].as_str().unwrap();
-        let transform_obj = entity["transform"].as_object().unwrap();
-        let position = transform_obj["position"].as_array().unwrap();
-        let rotation = transform_obj["rotation"].as_array().unwrap();
-        let scale = transform_obj["scale"].as_f64().unwrap() as f32;
+        if let Some(model_path) = entity["model_path"].as_str() {
+            let entity_model = resources::load_model(model_path, device)
+                .await
+                .unwrap();
+            world.add_component_to_entity(world_entity, entity_model);
+        }
 
-        let entity_model = resources::load_model(model_path, device)
-            .await
-            .unwrap();
-        let entity_texture = resources::load_material(device, queue, layout, texture_path)
-            .await
-            .unwrap();
+        if let Some(texture_path) = entity["texture_path"].as_str() {
+            let entity_texture = resources::load_material(device, queue, texture_layout, texture_path)
+                .await
+                .unwrap();
+            world.add_component_to_entity(world_entity, entity_texture);
+        }
 
-        let mut entity_transform = transform::Transform::new();
-        entity_transform.translation = cgmath::vec3(
-            position[0].as_f64().unwrap() as f32,
-            position[1].as_f64().unwrap() as f32,
-            position[2].as_f64().unwrap() as f32
-        );
-        entity_transform.rotation = cgmath::vec3(
-            rotation[0].as_f64().unwrap() as f32,
-            rotation[1].as_f64().unwrap() as f32,
-            rotation[2].as_f64().unwrap() as f32
-        );
-        entity_transform.scale = scale;
+        if let Some(transform_obj) = entity["transform"].as_object() {
+            let position = transform_obj["position"].as_array().unwrap();
+            let rotation = transform_obj["rotation"].as_array().unwrap();
+            let scale = transform_obj["scale"].as_f64().unwrap() as f32;
 
-        world.add_component_to_entity(world_entity, entity_model);
-        world.add_component_to_entity(world_entity, entity_texture);
-        world.add_component_to_entity(world_entity, entity_transform);
+            let entity_transform = transform::Transform {
+                translation: cgmath::vec3(
+                    position[0].as_f64().unwrap() as f32,
+                    position[1].as_f64().unwrap() as f32,
+                    position[2].as_f64().unwrap() as f32
+                ),
+                scale,
+                rotation: cgmath::vec3(
+                    rotation[0].as_f64().unwrap() as f32,
+                    rotation[1].as_f64().unwrap() as f32,
+                    rotation[2].as_f64().unwrap() as f32
+                )
+            };
+            world.add_component_to_entity(world_entity, entity_transform);
+        }
+
+        // skybox filepaths array loading
+        if let Some(skybox_files) = entity["skybox"].as_array() {
+            let skybox_files = skybox_files.iter().filter_map(|f| f.as_str()).collect();
+            let skybox = resources::load_cubemap_files(skybox_files, device, queue, cubemap_layout)
+                .await
+                .unwrap();
+            world.add_component_to_entity(world_entity, skybox);
+        }
     }
 
     world

@@ -7,14 +7,6 @@ pub struct Transform {
 }
 
 impl Transform {
-    pub fn new() -> Self {
-        Self {
-            translation: cgmath::vec3(0.0, 0.0, 0.0),
-            scale: 1.0,
-            rotation: cgmath::vec3(0.0, 0.0, 0.0)
-        }
-    }
-
     pub fn mat4(&self) -> cgmath::Matrix4<f32> {
         //  I dont believe these matrix constructions are very expensive, so all this extra work
         //  shouldnt be too big a deal for now

@@ -3,6 +3,7 @@ use anyhow::*;
 use wgpu::util::DeviceExt;
 
 pub struct Cubemap {
+    #[allow(unused)]
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler
@@ -94,7 +95,8 @@ impl Cubemap {
     }
 }
 
-pub struct CubemapBinding {
+pub struct CubemapComponent {
+    pub vertices: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup
 }
 

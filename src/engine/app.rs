@@ -32,9 +32,7 @@ struct State<'a> {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
-    world: ecs::ecs::World,
-    skybox: cubemap::CubemapBinding,
-    skycube: wgpu::Buffer
+    world: ecs::ecs::World
 }
 
 impl<'a> State<'a> {
@@ -131,24 +129,6 @@ impl<'a> State<'a> {
                 }
             ]
         });
-
-        let skybox = {
-            let skybox_files = vec![
-                "skybox/right.jpg",
-                "skybox/left.jpg",
-                "skybox/top.jpg",
-                "skybox/bottom.jpg",
-                "skybox/front.jpg",
-                "skybox/back.jpg"
-            ];
-
-            resources::load_cubemap_files(
-                skybox_files, 
-                &device, 
-                &queue, 
-                &skybox_bind_group_layout
-        ).await.unwrap()
-    };
 
         let camera = camera::Camera::new(
             (0.0, 5.0, 10.0),
@@ -266,10 +246,8 @@ impl<'a> State<'a> {
         };
 
         let world = resources::load_scene(
-            "scenes/test.json", &device, &queue, &texture_bind_group_layout
+            "scenes/test.json", &device, &queue, &texture_bind_group_layout, &skybox_bind_group_layout
         ).await.unwrap();
-
-        let skycube = cubemap::create_cubemap_vertices(&device);
 
         Self{
             window,
@@ -287,9 +265,7 @@ impl<'a> State<'a> {
             camera_buffer,
             camera_bind_group,
             depth_texture,
-            world,
-            skybox,
-            skycube
+            world
         }
     }
 
@@ -381,17 +357,19 @@ impl<'a> State<'a> {
             timestamp_writes: None
         });
 
-        //skytest
+        // rendering skybox
         render_pass.set_pipeline(&self.skybox_pipeline);
-        render_pass.set_vertex_buffer(0, self.skycube.slice(..));
-        render_pass.set_bind_group(0, &self.skybox.bind_group, &[]);
-        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-        render_pass.draw(0..36, 0..1);
-        //
+        let skybox = &mut self.world.borrow_component_vec::<cubemap::CubemapComponent>().unwrap();
+        for sky in skybox.iter_mut().filter_map(|f| f.as_mut()) {
+            render_pass.set_vertex_buffer(0, sky.vertices.slice(..));
+            render_pass.set_bind_group(0, &sky.bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.draw(0..36, 0..1);
+        }
 
+        // rendering standard entities
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-
         // we need to borrow the relevant components before we can use them for draw calls
         let transforms = &mut self.world.borrow_component_vec::<ecs::transform::Transform>().unwrap();
         let models = &mut self.world.borrow_component_vec::<model::Model>().unwrap();

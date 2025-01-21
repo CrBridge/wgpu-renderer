@@ -131,10 +131,11 @@ pub async fn load_scene(
     file_name: &str,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    layout: &wgpu::BindGroupLayout
+    texture_layout: &wgpu::BindGroupLayout,
+    cubemap_layout: &wgpu::BindGroupLayout
 ) -> anyhow::Result<ecs::ecs::World> {
     let json = load_string(file_name).await?;
-    Ok(ecs::scene::parse_scene(&json, device, queue, layout).await)
+    Ok(ecs::scene::parse_scene(&json, device, queue, texture_layout, cubemap_layout).await)
 }
 
 pub async fn load_cubemap_files(
@@ -142,7 +143,7 @@ pub async fn load_cubemap_files(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout
-) -> anyhow::Result<textures::cubemap::CubemapBinding> {
+) -> anyhow::Result<textures::cubemap::CubemapComponent> {
     let mut binaries = Vec::new();
     for i in file_names.iter() {
         let binary_data =  load_binary(i).await?;
@@ -163,5 +164,6 @@ pub async fn load_cubemap_files(
             }
         ]
     });
-    Ok(textures::cubemap::CubemapBinding { bind_group })
+    let vertices = textures::cubemap::create_cubemap_vertices(device);
+    Ok(textures::cubemap::CubemapComponent { vertices, bind_group })
 }
