@@ -3,6 +3,7 @@ use super::{
     resources, 
     textures::{texture, cubemap},
     pipeline,
+    resolution,
     camera,
     ecs
 };
@@ -10,8 +11,7 @@ use winit::{
     event::*,
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowBuilder},
-    dpi::PhysicalSize
+    window::{Window, WindowBuilder}
 };
 use wgpu::util::DeviceExt;
 use std::time::Duration;
@@ -25,6 +25,7 @@ struct State<'a> {
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
     skybox_pipeline: wgpu::RenderPipeline,
+    downscaler: resolution::ResolutionScalingPipeline,
     camera: camera::Camera,
     projection: camera::Projection,
     camera_controller: camera::CameraController,
@@ -183,8 +184,6 @@ impl<'a> State<'a> {
             ]
         });
 
-        let depth_texture = texture::Texture::create_depth_texture(&device, &config, "Depth Texture");
-
         // mat4x4 of f32 is 512 bits, or 64 bytes
         let model_push_range = wgpu::PushConstantRange {
             stages: wgpu::ShaderStages::VERTEX,
@@ -245,6 +244,17 @@ impl<'a> State<'a> {
             )
         };
 
+        let resolution = (480, 270);
+
+        let depth_texture = texture::Texture::create_depth_texture(
+            &device, resolution, "Depth Texture");
+
+        let downscaler = resolution::ResolutionScalingPipeline::new(
+            &device,
+            &config,
+            resolution
+        );
+
         let world = resources::load_scene(
             "scenes/test.json", &device, &queue, &texture_bind_group_layout, &skybox_bind_group_layout
         ).await.unwrap();
@@ -258,6 +268,7 @@ impl<'a> State<'a> {
             size,
             render_pipeline,
             skybox_pipeline,
+            downscaler,
             camera,
             projection,
             camera_controller,
@@ -279,7 +290,7 @@ impl<'a> State<'a> {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.projection.resize(new_size.width, new_size.height);
-            self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.config, "Depth Texture");
+            //self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.config, "Depth Texture");
             self.surface.configure(&self.device, &self.config);
         }
     }
@@ -333,7 +344,7 @@ impl<'a> State<'a> {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view: self.downscaler.view(),
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -394,6 +405,9 @@ impl<'a> State<'a> {
         // gotta drop the render_pass here since it borrows the encoder and we need it back
         drop(render_pass);
 
+        // render downscaled frame to surface texture
+        self.downscaler.upscale(&mut encoder, &view);
+
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
         
@@ -406,8 +420,7 @@ pub async fn run() {
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
         .with_title("WGPU Gaming")
-        .with_inner_size(PhysicalSize::new(480, 272))
-        //.with_maximized(true)
+        .with_maximized(true)
         .build(&event_loop)
         .unwrap();
     window.set_cursor_visible(false);

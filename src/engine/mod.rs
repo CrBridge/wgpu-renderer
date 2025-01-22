@@ -4,4 +4,5 @@ pub mod textures;
 mod model;
 mod resources;
 mod pipeline;
+mod resolution;
 mod camera;
