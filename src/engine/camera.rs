@@ -168,33 +168,3 @@ impl CameraController {
         }
     }
 }
-
-// this could still become a general ubo in the future if I want more per-frame variables
-// to access in the future (world position, (sin)time, etc.)
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform {
-    view_projection: [[f32; 4]; 4],
-    view_without_translation: [[f32; 4]; 4],
-    projection: [[f32; 4]; 4]
-}
-
-impl CameraUniform {
-    pub fn new() -> Self {
-        use cgmath::SquareMatrix;
-        Self {
-            view_projection: cgmath::Matrix4::identity().into(),
-            view_without_translation: cgmath::Matrix4::identity().into(),
-            projection: cgmath::Matrix4::identity().into()
-        }
-    }
-
-    pub fn update_view_projection(&mut self, camera: &Camera, projection: &Projection) {
-        let projection_matrix = projection.calculate_matrix();
-        let mut view_matrix = camera.calculate_matrix();
-        self.view_projection = (projection_matrix * view_matrix).into();
-        view_matrix.w = cgmath::vec4(0.0, 0.0, 0.0, 1.0);
-        self.view_without_translation = view_matrix.into();
-        self.projection = projection_matrix.into();
-    }
-}

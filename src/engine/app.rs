@@ -5,7 +5,8 @@ use super::{
     pipeline,
     resolution,
     camera,
-    ecs
+    ecs,
+    uniform
 };
 use winit::{
     event::*,
@@ -29,9 +30,10 @@ struct State<'a> {
     camera: camera::Camera,
     projection: camera::Projection,
     camera_controller: camera::CameraController,
-    camera_uniform: camera::CameraUniform,
+    camera_uniform: uniform::CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    light_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
     world: ecs::ecs::World
 }
@@ -79,6 +81,7 @@ impl<'a> State<'a> {
             format: surface_format,
             width: size.width,
             height: size.height,
+            //present_mode: surface_caps.present_modes[0], // uncapped frames (if supported)
             present_mode: wgpu::PresentMode::Fifo, // force vsync
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
@@ -144,10 +147,7 @@ impl<'a> State<'a> {
             100.0
         );
         let camera_controller = camera::CameraController::new(4.0, 0.4);
-
-        let mut camera_uniform = camera::CameraUniform::new();
-        camera_uniform.update_view_projection(&camera, &projection);
-
+        let camera_uniform = uniform::CameraUniform::new();
         let camera_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("Camera Buffer"),
@@ -155,7 +155,6 @@ impl<'a> State<'a> {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
             }
         );
-
         let camera_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
             label: Some("Camera Bind Group Layout"),
@@ -172,7 +171,6 @@ impl<'a> State<'a> {
                 }
             ]
         });
-
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Camera Bind Group"),
             layout: &camera_bind_group_layout,
@@ -180,6 +178,46 @@ impl<'a> State<'a> {
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: camera_buffer.as_entire_binding()
+                }
+            ]
+        });
+
+        let light_uniform = uniform::LightUniform::new(
+            cgmath::vec3(1.0, 1.0, -2.0),
+            cgmath::vec3(0.2, 0.1, 0.2)
+        );
+        // If i want the uniform contents to change, i need to
+        // make relevant struct values pub and add copy_dst
+        let light_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+            label: Some("Light Buffer"),
+            contents: bytemuck::cast_slice(&[light_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM
+        });
+        let light_bind_group_layout = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+            label: Some("Light Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None
+                    },
+                    count: None
+                }
+            ]
+        });
+        let light_bind_group = device.create_bind_group(
+            &wgpu::BindGroupDescriptor {
+            label: Some("Light Bind Group"),
+            layout: &light_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: light_buffer.as_entire_binding()
                 }
             ]
         });
@@ -196,7 +234,8 @@ impl<'a> State<'a> {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
                     &texture_bind_group_layout,
-                    &camera_bind_group_layout
+                    &camera_bind_group_layout,
+                    &light_bind_group_layout
                 ],
                 push_constant_ranges: &[
                     model_push_range
@@ -275,6 +314,7 @@ impl<'a> State<'a> {
             camera_uniform,
             camera_buffer,
             camera_bind_group,
+            light_bind_group,
             depth_texture,
             world
         }
@@ -381,6 +421,7 @@ impl<'a> State<'a> {
         // rendering standard entities
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+        render_pass.set_bind_group(2, &self.light_bind_group, &[]);
         // we need to borrow the relevant components before we can use them for draw calls
         let transforms = &mut self.world.borrow_component_vec::<ecs::transform::Transform>().unwrap();
         let models = &mut self.world.borrow_component_vec::<model::Model>().unwrap();

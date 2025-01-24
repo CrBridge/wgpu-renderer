@@ -10,8 +10,16 @@
       }
     },
     {
+      "model_path": "donut/donut.obj",
+      "texture_path": "donut/donut_diffuse.png",
+      "transform": {
+        "position": [3.0, 0.5, 4.7],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": 1.5
+      }
+    },
+    {
       "model_path": "quad/quad.obj",
-      "texture_path": "debug.png",
       "transform": {
         "position": [0.0, 0.0, 0.0],
         "rotation": [180.0, 0.0, 0.0],
@@ -20,12 +28,12 @@
     },
     {
       "skybox": [
-        "skybox/right.jpg",
-        "skybox/left.jpg",
-        "skybox/top.jpg",
-        "skybox/bottom.jpg",
-        "skybox/front.jpg",
-        "skybox/back.jpg"
+        "skybox/right.png",
+        "skybox/left.png",
+        "skybox/top.png",
+        "skybox/bottom.png",
+        "skybox/front.png",
+        "skybox/back.png"
       ]
     }
   ]

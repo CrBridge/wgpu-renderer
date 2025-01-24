@@ -25,9 +25,8 @@ pub async fn parse_scene(
                 .await
                 .unwrap();
             world.add_component_to_entity(world_entity, entity_model);
-        }
 
-        if let Some(texture_path) = entity["texture_path"].as_str() {
+            let texture_path = entity["texture_path"].as_str().unwrap_or("debug.png");
             let entity_texture = resources::load_material(device, queue, texture_layout, texture_path)
                 .await
                 .unwrap();

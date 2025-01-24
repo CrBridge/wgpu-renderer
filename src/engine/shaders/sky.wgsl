@@ -30,6 +30,5 @@ var s_sky: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    //
     return textureSample(t_sky, s_sky, in.uvw);
 }
