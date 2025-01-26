@@ -19,6 +19,14 @@
       }
     },
     {
+      "gltf_path": "gltf/Box.glb",
+      "transform": {
+        "position": [-6.0, 1.6, -3.0],
+        "rotation": [0.0, 0.0, 45.0],
+        "scale": 2.0
+      }
+    },
+    {
       "model_path": "quad/quad.obj",
       "transform": {
         "position": [0.0, 0.0, 0.0],

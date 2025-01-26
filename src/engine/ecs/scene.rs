@@ -33,6 +33,19 @@ pub async fn parse_scene(
             world.add_component_to_entity(world_entity, entity_texture);
         }
 
+        if let Some(gltf_path) = entity["gltf_path"].as_str() {
+            let entity_model = resources::load_gltf(gltf_path, device)
+                .await
+                .unwrap();
+            world.add_component_to_entity(world_entity, entity_model);
+
+            let texture_path = entity["texture_path"].as_str().unwrap_or("debug.png");
+            let entity_texture = resources::load_material(device, queue, texture_layout, texture_path)
+                .await
+                .unwrap();
+            world.add_component_to_entity(world_entity, entity_texture);
+        }
+
         if let Some(transform_obj) = entity["transform"].as_object() {
             let position = transform_obj["position"].as_array().unwrap();
             let rotation = transform_obj["rotation"].as_array().unwrap();

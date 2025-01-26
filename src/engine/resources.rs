@@ -167,3 +167,80 @@ pub async fn load_cubemap_files(
     let vertices = textures::cubemap::create_cubemap_vertices(device);
     Ok(textures::cubemap::CubemapComponent { vertices, bind_group })
 }
+
+pub async fn load_gltf(
+    file_name: &str,
+    device: &wgpu::Device
+) -> anyhow::Result<model::Model> {
+    let gltf_data = load_binary(file_name).await?;
+    let (doc, buffers, _images) = gltf::import_slice(&gltf_data)?;
+    let mut meshes = Vec::new();
+
+    for mesh in doc.meshes() {
+        for primitive in mesh.primitives() {
+            let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+            let mut indices = Vec::new();
+            if let Some(gltf::mesh::util::ReadIndices::U16(iter)) = reader.read_indices() {
+                for index in iter {
+                    indices.push(index as u32);
+                }
+            }
+            let mut positions = Vec::new();
+            if let Some(iter) = reader.read_positions() {
+                for pos in iter {
+                    positions.push(pos);
+                }
+            }
+            let mut normals = Vec::new();
+            if let Some(iter) = reader.read_normals() {
+                for normal in iter {
+                    normals.push(normal);
+                }
+            }
+            let mut tex_coords = Vec::new();
+            if let Some(gltf::mesh::util::ReadTexCoords::F32(iter)) = reader.read_tex_coords(0) {
+                for uv in iter {
+                    tex_coords.push(uv);
+                }
+            }
+
+            let normal_default = [0.0, 0.0, 0.0];
+            let uv_default = [0.0, 0.0];
+
+            if normals.len() < positions.len() {
+                normals.resize(positions.len(), normal_default);
+            }
+            if tex_coords.len() < positions.len() {
+                tex_coords.resize(positions.len(), uv_default);
+            }
+
+            let vertices = positions.into_iter()
+                .zip(normals).zip(tex_coords)
+                .map(|((position, normal), uv)| model::ModelVertex {
+                    position,
+                    normal,
+                    uv
+            }).collect::<Vec<_>>();
+
+            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("{:?} Vertex Buffer", file_name)),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX
+            });
+            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("{:?} Index Buffer", file_name)),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX
+            });
+
+            meshes.push(model::Mesh {
+                _name: file_name.to_string(),
+                vertex_buffer,
+                index_buffer,
+                num_elements: indices.len() as u32
+            });
+        }
+    }
+
+    Ok(model::Model { meshes })
+}
