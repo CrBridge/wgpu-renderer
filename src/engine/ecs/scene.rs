@@ -21,22 +21,13 @@ pub async fn parse_scene(
         let world_entity = world.new_entity();
 
         if let Some(model_path) = entity["model_path"].as_str() {
-            let entity_model = resources::load_model(model_path, device)
-                .await
-                .unwrap();
-            world.add_component_to_entity(world_entity, entity_model);
-
-            let texture_path = entity["texture_path"].as_str().unwrap_or("debug.png");
-            let entity_texture = resources::load_material(device, queue, texture_layout, texture_path)
-                .await
-                .unwrap();
-            world.add_component_to_entity(world_entity, entity_texture);
-        }
-
-        if let Some(gltf_path) = entity["gltf_path"].as_str() {
-            let entity_model = resources::load_gltf(gltf_path, device)
-                .await
-                .unwrap();
+            let entity_model = if model_path.ends_with(".obj") {
+                resources::load_model(model_path, device).await.unwrap()
+            } else if model_path.ends_with(".gltf") || model_path.ends_with(".glb") {
+                resources::load_gltf(model_path, device).await.unwrap()
+            } else {
+                panic!("Unsupported model format in scene: {}", model_path);
+            };
             world.add_component_to_entity(world_entity, entity_model);
 
             let texture_path = entity["texture_path"].as_str().unwrap_or("debug.png");
@@ -67,7 +58,6 @@ pub async fn parse_scene(
             world.add_component_to_entity(world_entity, entity_transform);
         }
 
-        // skybox filepaths array loading
         if let Some(skybox_files) = entity["skybox"].as_array() {
             let skybox_files = skybox_files.iter().filter_map(|f| f.as_str()).collect();
             let skybox = resources::load_cubemap_files(skybox_files, device, queue, cubemap_layout)

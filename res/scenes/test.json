@@ -19,7 +19,7 @@
       }
     },
     {
-      "gltf_path": "gltf/Box.glb",
+      "model_path": "gltf/Box.glb",
       "transform": {
         "position": [-6.0, 1.6, -3.0],
         "rotation": [0.0, 0.0, 45.0],
